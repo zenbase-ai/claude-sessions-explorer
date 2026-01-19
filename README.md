@@ -25,12 +25,19 @@ Open http://localhost:3000
 
 ### CLI (Python)
 
-Quick command-line exploration.
+Quick command-line exploration. No dependencies required.
 
 ```bash
-python explore.py                    # Interactive explorer
-python explore.py --search "auth"    # Search sessions
-python explore.py --export data.json # Export all data
+python explore.py                    # Stats overview
+python explore.py projects           # List all projects
+python explore.py sessions           # List recent sessions
+python explore.py sessions -p pixel  # Filter by project name
+python explore.py search "auth"      # Search prompts
+python explore.py show <session-id>  # View a session
+python explore.py tools              # Tool usage statistics
+python explore.py commits            # List tracked commits
+python explore.py export data.json   # Export all data to JSON
+python explore.py open               # Open web UI in browser
 ```
 
 ## Commit Tracking
