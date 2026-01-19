@@ -1,36 +1,42 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { useParams } from "next/navigation"
 import Link from "next/link"
 import { SessionCard } from "@/components/SessionCard"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import type { Project, SessionIndexEntry } from "@/types"
+import { getProjectName } from "@/lib/utils"
 
-type ProjectData = {
-  project: Project
-  sessions: SessionIndexEntry[]
-}
+export default function ProjectPage() {
+  const params = useParams()
+  const id = params.id as string
 
-async function getProject(id: string): Promise<ProjectData | null> {
-  try {
-    const res = await fetch(`http://localhost:3000/api/projects/${id}`, {
-      cache: "no-store",
-    })
-    if (!res.ok) return null
-    return res.json()
-  } catch {
-    return null
+  const [project, setProject] = useState<Project | null>(null)
+  const [sessions, setSessions] = useState<SessionIndexEntry[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch(`/api/projects/${id}`)
+      .then((res) => res.json())
+      .then((data) => {
+        setProject(data.project)
+        setSessions(data.sessions)
+      })
+      .finally(() => setLoading(false))
+  }, [id])
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    )
   }
-}
 
-export default async function ProjectPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
-  const { id } = await params
-  const data = await getProject(id)
-
-  if (!data) {
+  if (!project) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Card className="p-8 text-center">
@@ -44,8 +50,6 @@ export default async function ProjectPage({
       </div>
     )
   }
-
-  const { project, sessions } = data
 
   return (
     <div className="min-h-screen bg-background">
@@ -70,11 +74,14 @@ export default async function ProjectPage({
                 </svg>
               </Link>
             </Button>
-            <div>
+            <div className="min-w-0 flex-1">
               <h1 className="text-xl font-semibold text-foreground">
-                {project.name}
+                {getProjectName(project.name)}
               </h1>
-              <div className="mt-1 flex items-center gap-2">
+              <p className="mt-1 truncate text-sm text-muted-foreground" title={project.name}>
+                {project.name}
+              </p>
+              <div className="mt-2 flex items-center gap-2">
                 <Badge variant="secondary">{sessions.length} sessions</Badge>
               </div>
             </div>

@@ -18,3 +18,9 @@ export const truncate = (str: string, maxLength: number): string => {
   if (str.length <= maxLength) return str
   return str.slice(0, maxLength) + "..."
 }
+
+export const getProjectName = (fullPath: string): string => {
+  // Extract the last folder name from the path
+  const parts = fullPath.split("/").filter(Boolean)
+  return parts[parts.length - 1] || fullPath
+}

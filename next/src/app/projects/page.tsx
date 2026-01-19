@@ -1,25 +1,31 @@
+"use client"
+
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { formatDate } from "@/lib/utils"
+import { formatDate, getProjectName } from "@/lib/utils"
 import type { Project } from "@/types"
 
-async function getProjects(): Promise<Project[]> {
-  try {
-    const res = await fetch("http://localhost:3000/api/projects", {
-      cache: "no-store",
-    })
-    if (!res.ok) return []
-    const data = await res.json()
-    return data.projects
-  } catch {
-    return []
-  }
-}
+export default function ProjectsPage() {
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
 
-export default async function ProjectsPage() {
-  const projects = await getProjects()
+  useEffect(() => {
+    fetch("/api/projects")
+      .then((res) => res.json())
+      .then((data) => setProjects(data.projects))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -61,7 +67,10 @@ export default async function ProjectsPage() {
           {projects.map((project) => (
             <Link key={project.id} href={`/projects/${project.id}`}>
               <Card className="p-5 transition-colors hover:border-primary/50 hover:bg-accent/50">
-                <p className="truncate font-medium text-card-foreground">
+                <p className="font-medium text-card-foreground">
+                  {getProjectName(project.name)}
+                </p>
+                <p className="mt-1 truncate text-xs text-muted-foreground" title={project.name}>
                   {project.name}
                 </p>
                 <div className="mt-3 flex items-center justify-between">

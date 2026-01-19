@@ -1,86 +1,168 @@
-# Claude Code Sessions Explorer
+# Claude Sessions Explorer
 
-Tools and documentation for exploring, searching, and analyzing Claude Code session history.
+A web app to browse and explore your Claude Code session history, with commit tracking.
 
-## Session Storage Locations
+## Features
 
-| What | Path | Format |
+- **Dashboard** - Overview of sessions, messages, tokens, and projects
+- **Project Browser** - View all projects with Claude Code sessions
+- **Session Viewer** - Full conversation history with markdown rendering
+- **Commit Tracking** - See which git commits were made during each session
+- **Collapsible Tool Calls** - Expand/collapse tool inputs and outputs
+
+## Quick Start
+
+```bash
+cd next
+bun install
+bun run dev
+```
+
+Open http://localhost:3000 to browse your sessions.
+
+## Commit Tracking Setup
+
+To track git commits made during Claude Code sessions, add this hook to your Claude Code settings.
+
+### 1. Create the hook script
+
+Save this to `~/.claude/scripts/track-commits.sh`:
+
+```bash
+#!/bin/bash
+
+# Claude Code PostToolUse hook to track git commits
+# Writes commits to a JSON file alongside the session JSONL
+
+set -o pipefail
+trap 'exit 0' ERR
+
+command -v jq >/dev/null 2>&1 || exit 0
+
+INPUT=$(cat 2>/dev/null) || exit 0
+[ -z "$INPUT" ] && exit 0
+
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null) || exit 0
+[ "$TOOL_NAME" != "Bash" ] && exit 0
+
+STDOUT=$(echo "$INPUT" | jq -r '.tool_response.stdout // empty' 2>/dev/null) || exit 0
+[ -z "$STDOUT" ] && exit 0
+
+# Check for git commit output pattern: [branch hash]
+echo "$STDOUT" | grep -qE '^\[.+ [a-f0-9]{7,}\]' || exit 0
+
+COMMIT_LINE=$(echo "$STDOUT" | grep -oE '^\[.+ [a-f0-9]{7,}\]' 2>/dev/null | head -1) || exit 0
+[ -z "$COMMIT_LINE" ] && exit 0
+
+BRANCH=$(echo "$COMMIT_LINE" | sed -E 's/^\[(.+) [a-f0-9]+\]$/\1/' 2>/dev/null) || exit 0
+HASH=$(echo "$COMMIT_LINE" | sed -E 's/^\[.+ ([a-f0-9]+)\]$/\1/' 2>/dev/null) || exit 0
+[ -z "$BRANCH" ] || [ -z "$HASH" ] && exit 0
+
+SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty' 2>/dev/null) || exit 0
+CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || exit 0
+TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null) || exit 0
+
+if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+  COMMITS_FILE="${TRANSCRIPT_PATH%.jsonl}.commits.json"
+else
+  exit 0
+fi
+
+COMMITS_DIR=$(dirname "$COMMITS_FILE")
+[ -d "$COMMITS_DIR" ] && [ -w "$COMMITS_DIR" ] || exit 0
+
+REPO_URL=""
+if [ -n "$CWD" ] && [ -d "$CWD" ]; then
+  REPO_URL=$(cd "$CWD" 2>/dev/null && git remote get-url origin 2>/dev/null) || REPO_URL=""
+fi
+
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null) || exit 0
+
+NEW_COMMIT=$(jq -n -c \
+  --arg hash "$HASH" \
+  --arg branch "$BRANCH" \
+  --arg repo "$REPO_URL" \
+  --arg cwd "$CWD" \
+  --arg ts "$TIMESTAMP" \
+  '{commitHash: $hash, branch: $branch, repoUrl: $repo, cwd: $cwd, timestamp: $ts}' 2>/dev/null) || exit 0
+
+[ -z "$NEW_COMMIT" ] && exit 0
+
+if [ -f "$COMMITS_FILE" ]; then
+  EXISTING=$(cat "$COMMITS_FILE" 2>/dev/null) || EXISTING="[]"
+  echo "$EXISTING" | jq -e 'type == "array"' >/dev/null 2>&1 || EXISTING="[]"
+else
+  EXISTING="[]"
+fi
+
+RESULT=$(echo "$EXISTING" | jq -c ". + [$NEW_COMMIT]" 2>/dev/null) || exit 0
+[ -z "$RESULT" ] && exit 0
+
+TEMP_FILE="${COMMITS_FILE}.tmp.$$"
+echo "$RESULT" > "$TEMP_FILE" 2>/dev/null && mv "$TEMP_FILE" "$COMMITS_FILE" 2>/dev/null || rm -f "$TEMP_FILE" 2>/dev/null
+
+exit 0
+```
+
+Make it executable:
+
+```bash
+chmod +x ~/.claude/scripts/track-commits.sh
+```
+
+### 2. Add the hook to Claude Code settings
+
+Add this to your `~/.claude/settings.json` (or create the file):
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/scripts/track-commits.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### 3. Restart Claude Code
+
+The hook will now track all git commits made during sessions. Commits will appear in the session viewer with links to GitHub.
+
+## Session Data Locations
+
+| Data | Path | Format |
 |------|------|--------|
-| All prompts (all projects) | `~/.claude/history.jsonl` | JSONL - one entry per user message |
-| Full conversations | `~/.claude/projects/<project-hash>/*.jsonl` | JSONL - complete message history |
-| Session summaries | `~/.claude/projects/<project-hash>/sessions-index.json` | JSON - metadata for all sessions |
-| Project memory | `~/.claude/projects/<project-hash>/CLAUDE.md` | Markdown |
-| Usage statistics | `~/.claude/stats-cache.json` | JSON |
-| Todo lists | `~/.claude/todos/` | JSON |
+| All prompts | `~/.claude/history.jsonl` | JSONL |
+| Conversations | `~/.claude/projects/<hash>/*.jsonl` | JSONL |
+| Session index | `~/.claude/projects/<hash>/sessions-index.json` | JSON |
+| Commit tracking | `~/.claude/projects/<hash>/*.commits.json` | JSON |
+| Usage stats | `~/.claude/stats-cache.json` | JSON |
 
-## Data Structures
+## Session Retention
 
-### history.jsonl Entry
-
-```json
-{
-  "display": "your prompt text",
-  "pastedContents": {},
-  "timestamp": 1759271168143,
-  "project": "/Users/you/workspace/project-name"
-}
-```
-
-### sessions-index.json Entry
+By default, Claude Code removes sessions older than 30 days. To keep sessions longer, add to your settings:
 
 ```json
 {
-  "sessionId": "uuid",
-  "fullPath": "/Users/you/.claude/projects/.../session.jsonl",
-  "firstPrompt": "what the session was about",
-  "messageCount": 18,
-  "created": "2026-01-01T07:59:34.980Z",
-  "modified": "2026-01-01T08:05:39.942Z",
-  "gitBranch": "main",
-  "projectPath": "/Users/you/workspace/project"
+  "cleanupPeriodDays": 365
 }
 ```
 
-### Session JSONL (full conversation)
+## Tech Stack
 
-Each line is a message object containing:
-- `type`: "human" or "assistant"
-- `content`: the message content (text or tool calls)
-- `timestamp`: when the message was sent
-- Tool calls and results for assistant messages
+- Next.js 16 with App Router
+- Tailwind CSS v4
+- shadcn/ui components
+- TypeScript
 
-## Quick Commands
+## License
 
-```bash
-# List all unique projects you've worked on
-jq -r '.project' ~/.claude/history.jsonl | sort | uniq -c | sort -rn
-
-# Search for specific topics across all sessions
-grep -i "keyword" ~/.claude/history.jsonl | jq '.display'
-
-# Get sessions from a specific project
-jq -r 'select(.project | contains("project-name")) | .display' ~/.claude/history.jsonl
-
-# Export to CSV for analysis
-jq -r '[.timestamp, .project, .display] | @csv' ~/.claude/history.jsonl > ~/claude_sessions.csv
-
-# List all sessions with first prompts across all projects
-for idx in ~/.claude/projects/*/sessions-index.json; do
-  project=$(dirname "$idx" | xargs basename)
-  echo "=== $project ==="
-  jq -r '.entries[] | "\(.created): \(.firstPrompt)"' "$idx" 2>/dev/null | head -5
-done
-```
-
-## Usage
-
-```bash
-# Explore sessions
-python explore.py
-
-# Search across all sessions
-python explore.py --search "authentication"
-
-# Export all data to JSON
-python explore.py --export all_sessions.json
-```
+MIT
