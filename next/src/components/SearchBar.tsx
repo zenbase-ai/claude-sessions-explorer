@@ -1,3 +1,21 @@
+/**
+ * SearchBar Component
+ *
+ * A search input for finding sessions by content.
+ * Currently navigates to /search?q=query on submit.
+ *
+ * Note: Search functionality is prepared but the /search page
+ * may not be fully implemented yet.
+ *
+ * Features:
+ * - Controlled input with local state
+ * - Form submission with Enter key or button click
+ * - URL-encodes the search query
+ * - Customizable width via className prop
+ *
+ * Used by: Could be added to header/navigation for global search
+ */
+
 "use client"
 
 import { useState } from "react"
@@ -6,14 +24,22 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
+/**
+ * Props for the SearchBar component
+ */
 type SearchBarProps = {
+  /** Optional additional CSS classes for the container */
   className?: string
 }
 
 export const SearchBar: React.FC<SearchBarProps> = ({ className }) => {
+  // Local state for the search query
   const [query, setQuery] = useState("")
   const router = useRouter()
 
+  /**
+   * Handle form submission - navigate to search page with query
+   */
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (query.trim()) {
@@ -31,6 +57,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({ className }) => {
           placeholder="Search sessions..."
           className="pr-10"
         />
+        {/* Search icon button */}
         <Button
           type="submit"
           variant="ghost"

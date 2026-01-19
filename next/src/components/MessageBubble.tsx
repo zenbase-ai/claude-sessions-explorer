@@ -1,3 +1,19 @@
+/**
+ * MessageBubble Component
+ *
+ * Renders a single message in a conversation view, styled as a chat bubble.
+ * Supports different message types: text, tool use, and tool results.
+ *
+ * Features:
+ * - Markdown rendering for text content
+ * - Collapsible tool use blocks showing tool name and input
+ * - Collapsible tool result blocks with preview/expand functionality
+ * - Filters out internal command messages (e.g., <command-name> tags)
+ * - Different styling for user vs assistant messages
+ *
+ * Used by: /sessions/[id] page to display conversation history
+ */
+
 "use client"
 
 import { useState } from "react"
@@ -5,27 +21,48 @@ import Markdown from "react-markdown"
 import { cn } from "@/lib/utils"
 import type { SessionMessage, MessageContent } from "@/types"
 
+/**
+ * Props for the MessageBubble component
+ */
 type MessageBubbleProps = {
+  /** The session message to render */
   message: SessionMessage
 }
 
+/**
+ * Internal representation of a parsed content part.
+ * Messages can contain multiple parts of different types.
+ */
 type ContentPart = {
+  /** The type of content: text, tool_use, or tool_result */
   type: "text" | "tool_use" | "tool_result"
+  /** The content string to display */
   content: string
+  /** Tool name (only for tool_use type) */
   toolName?: string
 }
 
+/**
+ * Parses message content into an array of typed content parts.
+ * Handles both simple string content and complex array content.
+ *
+ * @param content - Raw message content (string or MessageContent array)
+ * @returns Array of parsed content parts for rendering
+ */
 const parseContent = (content: string | MessageContent[]): ContentPart[] => {
+  // Simple string content -> single text part
   if (typeof content === "string") {
     return [{ type: "text", content }]
   }
 
+  // Array content -> multiple parts of different types
   if (Array.isArray(content)) {
     const parts: ContentPart[] = []
     for (const part of content) {
       if (part.type === "text" && part.text) {
         parts.push({ type: "text", content: part.text })
       } else if (part.type === "tool_use" && part.name) {
+        // Tool use shows the tool name and its input parameters
         const inputStr = part.input
           ? typeof part.input === "string"
             ? part.input
@@ -37,6 +74,7 @@ const parseContent = (content: string | MessageContent[]): ContentPart[] => {
           toolName: part.name,
         })
       } else if (part.type === "tool_result") {
+        // Tool results show the output from tool execution
         const resultContent =
           typeof part.content === "string"
             ? part.content
@@ -53,6 +91,10 @@ const parseContent = (content: string | MessageContent[]): ContentPart[] => {
   return []
 }
 
+/**
+ * Renders a collapsible block showing a tool invocation.
+ * Displays the tool name as a header with expandable input parameters.
+ */
 const ToolUseBlock: React.FC<{ toolName: string; content: string }> = ({
   toolName,
   content,
@@ -85,6 +127,10 @@ const ToolUseBlock: React.FC<{ toolName: string; content: string }> = ({
   )
 }
 
+/**
+ * Renders a collapsible block showing tool execution results.
+ * Shows a preview (first 150 chars) with option to expand.
+ */
 const ToolResultBlock: React.FC<{ content: string }> = ({ content }) => {
   const [isExpanded, setIsExpanded] = useState(false)
   const preview = content.slice(0, 150)
@@ -111,17 +157,23 @@ const ToolResultBlock: React.FC<{ content: string }> = ({ content }) => {
   )
 }
 
+/**
+ * Main MessageBubble component.
+ * Renders a chat bubble with the message content, styled differently for user/assistant.
+ */
 export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
   const isUser = message.type === "user"
   const content = message.message?.content
 
+  // Skip meta messages (system messages not meant for display)
   if (message.isMeta) return null
 
   const parts = content ? parseContent(content) : []
 
+  // Skip if no parseable content
   if (parts.length === 0) return null
 
-  // Filter out internal command messages
+  // Filter out internal command messages (Claude Code internal tags)
   const textParts = parts.filter((p) => p.type === "text")
   const hasOnlyInternalCommands = textParts.every(
     (p) =>
@@ -129,6 +181,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
       p.content.includes("<local-command-")
   )
 
+  // Skip if message only contains internal commands
   if (textParts.length > 0 && hasOnlyInternalCommands) return null
 
   return (
@@ -141,18 +194,23 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
             : "bg-muted/50 text-foreground border border-border"
         )}
       >
+        {/* Message sender label */}
         <div className="mb-1.5 text-xs font-medium opacity-70">
           {isUser ? "You" : "Claude"}
         </div>
+
+        {/* Message content parts */}
         <div className="space-y-2">
           {parts.map((part, idx) => {
             if (part.type === "text") {
+              // Skip internal command messages
               if (
                 part.content.includes("<command-name>") ||
                 part.content.includes("<local-command-")
               ) {
                 return null
               }
+              // Render text with markdown support
               return (
                 <div
                   key={idx}
