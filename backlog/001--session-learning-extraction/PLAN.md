@@ -1,6 +1,26 @@
 # Session Learning Extraction
 
+> **Status: ✅ COMPLETED** (2026-01-18)
+
 Build a memory system that learns from Claude Code sessions to generate project-specific knowledge.
+
+## Implementation
+
+The following components were implemented:
+
+- **Models** (`src/claude_sessions_explorer/models.py`): Pydantic models for memory types
+- **Prompts** (`src/claude_sessions_explorer/prompts/`): GEPA-inspired extraction, Mem0-style consolidation, generation prompts
+- **Memory Module** (`src/claude_sessions_explorer/memory/`):
+  - `extractor.py`: Extract learnings from sessions via Claude Agent SDK
+  - `consolidator.py`: Merge extractions into unified project memory
+  - `generator.py`: Generate CLAUDE.md, skills, and actionable tasks
+- **CLI Commands**: extract, extract-all, consolidate, generate, learn, apply, query
+
+Key features:
+- Environment-specific vs universal issue detection
+- Frequency filtering (only repeated patterns in CLAUDE.md)
+- Task generation (fix root causes instead of documenting workarounds)
+- Verification step to validate generated content
 
 ## Inspiration
 
@@ -25,6 +45,51 @@ Key insight from GEPA: Instead of just extracting knowledge, we use **LLM reflec
 2. What went wrong → Document as gotchas
 3. What was repeated → Capture as workflows
 4. What was decided → Record rationale
+
+### Patterns Borrowed for Prompts
+
+We studied the actual source code and documentation from these projects to structure our prompts:
+
+#### From GEPA ([arxiv.org/abs/2507.19457](https://arxiv.org/abs/2507.19457))
+- **Multi-stage reflective analysis**: Trace Overview → Causal Analysis → Knowledge Extraction
+- **Execution trace focus**: Treating sessions as structured traces with inputs/outputs/failures
+- **Causal attribution**: Asking "WHY did this succeed/fail?" not just "what happened"
+- **Pareto frontier concept**: Keeping diverse, complementary insights rather than one "best" answer
+
+#### From Mem0 ([github.com/mem0ai/mem0/blob/main/mem0/configs/prompts.py](https://github.com/mem0ai/mem0/blob/main/mem0/configs/prompts.py))
+- **Memory operations**: ADD, UPDATE, MERGE, DELETE (from `DEFAULT_UPDATE_MEMORY_PROMPT`)
+- **Penalty warnings**: "YOU WILL BE PENALIZED IF YOU..." pattern for critical instructions
+- **Fact extraction structure**: JSON with typed categories (from `FACT_RETRIEVAL_PROMPT`)
+- **User vs system separation**: Clear rules about what to include/exclude
+- **Procedural memory format**: Numbered steps with exact outputs (from `PROCEDURAL_MEMORY_SYSTEM_PROMPT`)
+
+#### From DSPy ([github.com/stanfordnlp/dspy/blob/main/dspy/propose/grounded_proposer.py](https://github.com/stanfordnlp/dspy/blob/main/dspy/propose/grounded_proposer.py))
+- **TIPS dictionary**: Configurable guidance modes (thorough/selective/technical/practical)
+- **Signature-based structure**: Separate system prompt + user prompt
+- **Field prefixes**: Clear section headers like `## TASK`, `## OUTPUT FORMAT`
+- **Multi-stage prompting**: Describe → Analyze → Generate pattern
+
+#### Prompt Structure Template
+```
+┌─────────────────────────────────────────────────────────────┐
+│ SYSTEM PROMPT (role definition)                             │
+│ - Who you are                                               │
+│ - What you do                                               │
+│ - Memory hierarchy you work with                            │
+├─────────────────────────────────────────────────────────────┤
+│ USER PROMPT                                                 │
+│ ├── ## TASK (what to do)                                    │
+│ ├── ## PROCESS (multi-stage analysis)                       │
+│ ├── ## CATEGORIES (what to extract, with JSON schemas)      │
+│ ├── ## OUTPUT FORMAT (exact JSON structure)                 │
+│ ├── ## CRITICAL INSTRUCTIONS                                │
+│ │   ├── DO: positive instructions                           │
+│ │   ├── DO NOT: negative instructions                       │
+│ │   └── PENALIZED IF: hard constraints                      │
+│ ├── ## TIP (configurable guidance)                          │
+│ └── ## INPUT (the actual data)                              │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## Goal
 
