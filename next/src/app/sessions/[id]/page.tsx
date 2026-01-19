@@ -1,3 +1,31 @@
+/**
+ * Session Detail Page
+ *
+ * Displays the full conversation history for a Claude Code session.
+ * Shows messages as chat bubbles and lists any git commits made during the session.
+ *
+ * URL Parameters:
+ * - id: The session ID (UUID format)
+ *
+ * Data Flow:
+ * 1. On mount, fetches full session from /api/sessions/[id]
+ * 2. API searches all projects to find the session
+ * 3. Returns messages from JSONL file and commits from .commits.json
+ *
+ * Sections:
+ * - Commits: Shows git commits made during the session (if any)
+ *   - Links to GitHub/GitLab if remote URL is available
+ * - Conversation: Chat-style message bubbles using MessageBubble component
+ *
+ * Navigation:
+ * - Back button links to the project this session belongs to
+ *
+ * Architecture Notes:
+ * - Client component using useParams hook
+ * - Sticky header for navigation while scrolling
+ * - Messages rendered with MessageBubble component
+ */
+
 "use client"
 
 import { useEffect, useState } from "react"
@@ -11,12 +39,14 @@ import { formatDate } from "@/lib/utils"
 import type { Session } from "@/types"
 
 export default function SessionPage() {
+  // Get session ID from URL
   const params = useParams()
   const id = params.id as string
 
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // Fetch session on mount or when ID changes
   useEffect(() => {
     fetch(`/api/sessions/${id}`)
       .then((res) => res.json())
@@ -24,6 +54,7 @@ export default function SessionPage() {
       .finally(() => setLoading(false))
   }, [id])
 
+  // Loading state
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -32,6 +63,7 @@ export default function SessionPage() {
     )
   }
 
+  // Not found state
   if (!session) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -49,9 +81,11 @@ export default function SessionPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Sticky header with session info */}
       <header className="sticky top-0 z-10 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
         <div className="mx-auto max-w-4xl px-4 py-4">
           <div className="flex items-center gap-4">
+            {/* Back to project */}
             <Button variant="ghost" size="icon" asChild>
               <Link href={`/projects/${session.projectId}`}>
                 <svg
@@ -71,9 +105,11 @@ export default function SessionPage() {
               </Link>
             </Button>
             <div className="min-w-0 flex-1">
+              {/* Session title (first prompt) */}
               <h1 className="truncate text-lg font-semibold text-foreground">
                 {session.firstPrompt || "Session"}
               </h1>
+              {/* Session metadata */}
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span className="text-sm text-muted-foreground">
                   {formatDate(session.created)}
@@ -93,7 +129,7 @@ export default function SessionPage() {
       </header>
 
       <main className="mx-auto max-w-4xl px-4 py-8">
-        {/* Commits section */}
+        {/* Commits section - only shown if commits exist */}
         {session.commits && session.commits.length > 0 && (
           <section className="mb-8">
             <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
@@ -105,6 +141,7 @@ export default function SessionPage() {
                   key={`${commit.commitHash}-${idx}`}
                   className="flex items-center gap-3 px-4 py-3"
                 >
+                  {/* Commit success icon */}
                   <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -123,6 +160,7 @@ export default function SessionPage() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
+                      {/* Commit hash - links to GitHub if remote URL exists */}
                       {commit.repoUrl ? (
                         <a
                           href={`${commit.repoUrl.replace(/\.git$/, "")}/commit/${commit.commitHash}`}
@@ -137,9 +175,11 @@ export default function SessionPage() {
                           {commit.commitHash}
                         </code>
                       )}
+                      {/* Branch badge */}
                       <Badge variant="secondary" className="text-xs">
                         {commit.branch}
                       </Badge>
+                      {/* GitHub icon link */}
                       {commit.repoUrl && (
                         <a
                           href={commit.repoUrl.replace(/\.git$/, "")}
@@ -159,6 +199,7 @@ export default function SessionPage() {
                       )}
                     </div>
                   </div>
+                  {/* Commit timestamp */}
                   <div className="shrink-0 text-xs text-muted-foreground">
                     {new Date(commit.timestamp).toLocaleTimeString()}
                   </div>
@@ -168,7 +209,7 @@ export default function SessionPage() {
           </section>
         )}
 
-        {/* Messages section */}
+        {/* Messages section - the conversation */}
         <section>
           <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
             Conversation
@@ -179,6 +220,7 @@ export default function SessionPage() {
             ))}
           </div>
 
+          {/* Empty state */}
           {(!session.messages || session.messages.length === 0) && (
             <Card className="p-12 text-center">
               <p className="text-muted-foreground">No messages in this session</p>

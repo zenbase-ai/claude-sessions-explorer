@@ -1,3 +1,26 @@
+/**
+ * Dashboard Page (Home)
+ *
+ * The main landing page showing an overview of Claude Code usage.
+ * Displays aggregated statistics, project list, and recent sessions.
+ *
+ * Data Flow:
+ * 1. On mount, fetches stats from /api/stats (pre-computed cache)
+ * 2. Fetches project list from /api/projects
+ * 3. For each of the first 5 projects, fetches sessions from /api/projects/[id]
+ * 4. Aggregates and sorts all sessions to show the 10 most recent
+ *
+ * Sections:
+ * - Overview: StatsCards showing total sessions, messages, tokens, first session date
+ * - Projects: Grid of project cards (links to /projects/[id])
+ * - Recent Sessions: List of SessionCards (links to /sessions/[id])
+ *
+ * Architecture Notes:
+ * - Client component ("use client") for client-side data fetching
+ * - Uses useEffect for data loading on mount
+ * - Loading state displayed while fetching data
+ */
+
 "use client"
 
 import { useEffect, useState } from "react"
@@ -10,6 +33,11 @@ import { Button } from "@/components/ui/button"
 import type { StatsCache, Project, SessionIndexEntry } from "@/types"
 import { getProjectName } from "@/lib/utils"
 
+/**
+ * Formats large numbers with K/M suffixes for display.
+ * @example formatNumber(1500) // "1.5K"
+ * @example formatNumber(2000000) // "2.0M"
+ */
 const formatNumber = (num: number): string => {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + "M"
   if (num >= 1000) return (num / 1000).toFixed(1) + "K"
@@ -17,14 +45,17 @@ const formatNumber = (num: number): string => {
 }
 
 export default function Home() {
+  // State for data from API
   const [stats, setStats] = useState<StatsCache | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
   const [recentSessions, setRecentSessions] = useState<SessionIndexEntry[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Fetch all data on component mount
   useEffect(() => {
     async function fetchData() {
       try {
+        // Fetch stats and projects in parallel
         const [statsRes, projectsRes] = await Promise.all([
           fetch("/api/stats"),
           fetch("/api/projects"),
@@ -39,7 +70,7 @@ export default function Home() {
           const data = await projectsRes.json()
           setProjects(data.projects)
 
-          // Get recent sessions from first few projects
+          // Fetch sessions from first 5 projects to build "recent sessions" list
           const allSessions: SessionIndexEntry[] = []
           for (const project of data.projects.slice(0, 5)) {
             const res = await fetch(`/api/projects/${project.id}`)
@@ -49,6 +80,7 @@ export default function Home() {
             }
           }
 
+          // Sort by modification date and take the 10 most recent
           const sorted = allSessions
             .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
             .slice(0, 10)
@@ -62,6 +94,7 @@ export default function Home() {
     fetchData()
   }, [])
 
+  // Calculate total tokens across all models
   const totalTokens = stats
     ? Object.values(stats.modelUsage).reduce(
         (acc, m) => acc + m.inputTokens + m.outputTokens,
@@ -69,6 +102,7 @@ export default function Home() {
       )
     : 0
 
+  // Loading state
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -79,9 +113,11 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Header with app title */}
       <header className="border-b border-border bg-card">
         <div className="mx-auto max-w-6xl px-4 py-6">
           <div className="flex items-center gap-3">
+            {/* App icon */}
             <div className="flex size-10 items-center justify-center rounded-lg bg-primary">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -111,6 +147,7 @@ export default function Home() {
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-8">
+        {/* Overview section with stat cards */}
         <section className="mb-10">
           <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-muted-foreground">
             Overview
@@ -164,6 +201,7 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Projects section */}
         <section className="mb-10">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
@@ -191,6 +229,7 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Recent sessions section */}
         <section>
           <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-muted-foreground">
             Recent Sessions

@@ -1,3 +1,26 @@
+/**
+ * Project Detail Page
+ *
+ * Displays all sessions for a specific project.
+ * Shows project information in the header and lists all sessions.
+ *
+ * URL Parameters:
+ * - id: The project ID (URL-encoded path from directory name)
+ *
+ * Data Flow:
+ * 1. On mount, fetches project and sessions from /api/projects/[id]
+ * 2. Renders project info in header
+ * 3. Lists all sessions using SessionCard component
+ *
+ * Navigation:
+ * - Back button links to projects list (/projects)
+ * - Session cards link to /sessions/[id]
+ *
+ * Architecture Notes:
+ * - Client component using useParams hook for dynamic routing
+ * - Sessions are pre-sorted by API (most recent first)
+ */
+
 "use client"
 
 import { useEffect, useState } from "react"
@@ -11,6 +34,7 @@ import type { Project, SessionIndexEntry } from "@/types"
 import { getProjectName } from "@/lib/utils"
 
 export default function ProjectPage() {
+  // Get project ID from URL
   const params = useParams()
   const id = params.id as string
 
@@ -18,6 +42,7 @@ export default function ProjectPage() {
   const [sessions, setSessions] = useState<SessionIndexEntry[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Fetch project and sessions on mount or when ID changes
   useEffect(() => {
     fetch(`/api/projects/${id}`)
       .then((res) => res.json())
@@ -28,6 +53,7 @@ export default function ProjectPage() {
       .finally(() => setLoading(false))
   }, [id])
 
+  // Loading state
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -36,6 +62,7 @@ export default function ProjectPage() {
     )
   }
 
+  // Not found state
   if (!project) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -53,9 +80,11 @@ export default function ProjectPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Header with project info */}
       <header className="border-b border-border bg-card">
         <div className="mx-auto max-w-6xl px-4 py-6">
           <div className="flex items-center gap-4">
+            {/* Back to projects list */}
             <Button variant="ghost" size="icon" asChild>
               <Link href="/projects">
                 <svg
@@ -75,12 +104,15 @@ export default function ProjectPage() {
               </Link>
             </Button>
             <div className="min-w-0 flex-1">
+              {/* Project name (last folder) */}
               <h1 className="text-xl font-semibold text-foreground">
                 {getProjectName(project.name)}
               </h1>
+              {/* Full path */}
               <p className="mt-1 truncate text-sm text-muted-foreground" title={project.name}>
                 {project.name}
               </p>
+              {/* Session count badge */}
               <div className="mt-2 flex items-center gap-2">
                 <Badge variant="secondary">{sessions.length} sessions</Badge>
               </div>
@@ -90,12 +122,14 @@ export default function ProjectPage() {
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-8">
+        {/* Sessions list */}
         <div className="space-y-3">
           {sessions.map((session) => (
             <SessionCard key={session.sessionId} session={session} />
           ))}
         </div>
 
+        {/* Empty state */}
         {sessions.length === 0 && (
           <Card className="p-12 text-center">
             <p className="text-muted-foreground">
