@@ -6,10 +6,19 @@ Build a memory system that learns from Claude Code sessions to generate project-
 
 This approach is inspired by several sources:
 
+### Memory & Context Engineering
 - **[Mem0 Context Engineering](https://mem0.ai/blog/context-engineering-ai-agents-guide)** - Multi-level memory hierarchy (episodic, semantic, procedural) based on cognitive science
-- **[GEPA (DSPy Optimizer)](https://github.com/gepa-ai/gepa)** - Reflective prompt evolution that analyzes execution traces to identify what went well/wrong and propose improvements
 - **[Amazon Bedrock AgentCore Memory](https://docs.aws.amazon.com/bedrock/latest/userguide/agents-memory.html)** - Session summaries and persistent memory for AI agents
+
+### Reflective Optimization
+- **[GEPA Repository](https://github.com/gepa-ai/gepa)** - Reflective prompt evolution via execution trace analysis
+- **[GEPA Paper](https://arxiv.org/abs/2507.19457)** - "Reflective Prompt Evolution Can Outperform Reinforcement Learning"
+- **[DSPy GEPA Overview](https://dspy.ai/api/optimizers/GEPA/overview/)** - How GEPA integrates with DSPy for prompt optimization
+- **[DSPy Framework](https://github.com/stanfordnlp/dspy)** - Programming language models with optimizers
+
+### Claude Code
 - **[Claude Code Best Practices](https://docs.anthropic.com/en/docs/claude-code/best-practices)** - CLAUDE.md files for project-specific instructions
+- **[Claude Agent SDK](https://github.com/anthropics/claude-code-sdk-python)** - Python SDK for building on Claude Code
 
 Key insight from GEPA: Instead of just extracting knowledge, we use **LLM reflection on execution traces** to identify:
 1. What went well → Reinforce as best practices
