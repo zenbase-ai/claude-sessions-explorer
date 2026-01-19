@@ -1,0 +1,26 @@
+[project]
+name = "claude-sessions-explorer"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "Amir Mehr", email = "amir.saiedmehr@gmail.com" }
+]
+dependencies = [
+    "claude-agent-sdk>=0.1.20",
+]
+readme = "README.md"
+requires-python = ">= 3.8"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.rye]
+managed = true
+dev-dependencies = []
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/claude_sessions_explorer"]

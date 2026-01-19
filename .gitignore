@@ -1,7 +1,18 @@
 # Claude Code local files
 .claude/
 
-# Dependencies
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.python-version
+
+# Rye
+requirements.lock
+requirements-dev.lock
+
+# Node
 node_modules/
 
 # Build outputs
@@ -21,4 +32,6 @@ dist/
 .idea/
 .vscode/
 *.swp
+
+# Logs
 next/logs/
