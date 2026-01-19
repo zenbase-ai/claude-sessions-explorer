@@ -143,6 +143,9 @@ export default function Home() {
               </p>
             </div>
           </div>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/knowledge">Knowledge</Link>
+          </Button>
         </div>
       </header>
 
