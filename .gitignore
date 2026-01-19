@@ -1,6 +1,9 @@
 # Claude Code local files
 .claude/
 
+# Extraction data
+.data/
+
 # Python
 .venv/
 __pycache__/
@@ -14,6 +17,7 @@ requirements-dev.lock
 
 # Node
 node_modules/
+next/node_modules/
 
 # Build outputs
 .next/
@@ -34,4 +38,5 @@ dist/
 *.swp
 
 # Logs
+logs/
 next/logs/
