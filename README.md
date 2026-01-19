@@ -25,20 +25,69 @@ Open http://localhost:3000
 
 ### CLI (Python)
 
-Quick command-line exploration. No dependencies required.
+Quick command-line exploration.
 
 ```bash
-python explore.py                    # Stats overview
-python explore.py projects           # List all projects
-python explore.py sessions           # List recent sessions
-python explore.py sessions -p pixel  # Filter by project name
-python explore.py search "auth"      # Search prompts
-python explore.py show <session-id>  # View a session
-python explore.py tools              # Tool usage statistics
-python explore.py commits            # List tracked commits
-python explore.py export data.json   # Export all data to JSON
-python explore.py open               # Open web UI in browser
+# Setup (requires rye)
+rye sync
+
+# Exploration commands
+rye run python explore.py                    # Stats overview
+rye run python explore.py projects           # List all projects
+rye run python explore.py sessions           # List recent sessions
+rye run python explore.py sessions -p pixel  # Filter by project name
+rye run python explore.py search "auth"      # Search prompts
+rye run python explore.py show <session-id>  # View a session
+rye run python explore.py tools              # Tool usage statistics
+rye run python explore.py commits            # List tracked commits
+rye run python explore.py export data.json   # Export all data to JSON
+rye run python explore.py open               # Open web UI in browser
 ```
+
+## Session Learning Extraction
+
+Extract learnings from your Claude Code sessions to generate project-specific CLAUDE.md files and actionable tasks.
+
+### How It Works
+
+1. **Extract**: Analyze session transcripts using GEPA-inspired reflective analysis
+2. **Consolidate**: Merge extractions into unified project memory (Mem0-style operations)
+3. **Generate**: Create CLAUDE.md, skills, and actionable tasks
+
+### Commands
+
+```bash
+# Extract from all sessions for a project
+rye run python explore.py extract-all -p myproject
+
+# Consolidate extractions into project memory
+rye run python explore.py consolidate -p myproject
+
+# Generate CLAUDE.md, skills, and tasks
+rye run python explore.py generate -p myproject
+
+# All-in-one: extract + consolidate + generate
+rye run python explore.py learn -p myproject
+
+# Apply generated files to your project
+rye run python explore.py apply -p myproject -t /path/to/project
+
+# Query project memory
+rye run python explore.py query -p myproject "How do I start the dev server?"
+```
+
+### What Gets Generated
+
+- **CLAUDE.md**: Project-specific instructions based on repeated patterns
+- **Tasks**: Actionable fixes for workarounds (fix root causes, don't document them)
+- **Skills**: Reusable workflows as slash commands
+
+### Key Features
+
+- **Frequency filtering**: Only includes patterns seen 2+ times
+- **Environment detection**: Filters out user-specific issues (shell configs, local machine quirks)
+- **Verification**: Validates generated content against current reality
+- **Task generation**: Converts workarounds into actionable fix tasks
 
 ## Commit Tracking
 
