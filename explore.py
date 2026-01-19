@@ -5,6 +5,7 @@ Claude Sessions Explorer CLI
 Browse and search your Claude Code session history.
 """
 
+import asyncio
 import json
 import sys
 from pathlib import Path
@@ -458,6 +459,393 @@ def cmd_open(args):
     webbrowser.open(url)
 
 
+def cmd_extract(args):
+    """Extract learnings from a session"""
+    from src.claude_sessions_explorer.memory import extract_from_session, save_extraction
+
+    session_id = args.session_id
+    print(f"\n  Extracting from session: {session_id}")
+
+    try:
+        extraction = asyncio.run(extract_from_session(session_id))
+        output_file = save_extraction(extraction)
+
+        print(f"  Summary: {extraction.session_summary}")
+        print(f"\n  Extracted:")
+        print(f"    Episodic memories: {len(extraction.episodic)}")
+        print(f"    Semantic memories: {len(extraction.semantic)}")
+        print(f"    Procedural memories: {len(extraction.procedural)}")
+        print(f"    Decisions: {len(extraction.decisions)}")
+        print(f"    Gotchas: {len(extraction.gotchas)}")
+        print(f"\n  Saved to: {output_file}\n")
+
+    except ValueError as e:
+        print(f"  Error: {e}\n")
+        sys.exit(1)
+    except Exception as e:
+        print(f"  Error during extraction: {e}\n")
+        sys.exit(1)
+
+
+def cmd_extract_all(args):
+    """Extract learnings from all sessions for a project"""
+    from src.claude_sessions_explorer.memory import extract_from_session, save_extraction
+
+    project_filter = args.project.lower() if args.project else None
+    force = args.force
+
+    # Find matching projects
+    projects = get_projects()
+    if project_filter:
+        projects = [p for p in projects if project_filter in p["name"].lower() or project_filter in p["path"].lower()]
+
+    if not projects:
+        print(f"\n  No projects found matching '{args.project}'.\n" if args.project else "\n  No projects found.\n")
+        return
+
+    # Collect all sessions
+    all_sessions = []
+    for p in projects:
+        for s in p["sessions"]:
+            all_sessions.append({
+                "session_id": s.get("sessionId"),
+                "project": p["name"],
+                "prompt": truncate(s.get("firstPrompt", ""), 50)
+            })
+
+    print(f"\n  Found {len(all_sessions)} sessions across {len(projects)} project(s)")
+
+    # Check for existing extractions
+    data_dir = Path(".data/extractions")
+    existing = set()
+    if data_dir.exists() and not force:
+        for project_dir in data_dir.iterdir():
+            if project_dir.is_dir():
+                for f in project_dir.glob("*.json"):
+                    existing.add(f.stem)
+
+    # Filter out sub-agent sessions (those starting with "## TASK")
+    def is_real_session(s):
+        prompt = s.get("prompt", "")
+        return not prompt.startswith("## TASK")
+
+    real_sessions = [s for s in all_sessions if is_real_session(s)]
+    subagent_count = len(all_sessions) - len(real_sessions)
+    if subagent_count > 0:
+        print(f"  Skipping {subagent_count} sub-agent sessions")
+
+    sessions_to_process = [s for s in real_sessions if s["session_id"] not in existing]
+
+    if not force and existing:
+        print(f"  Skipping {len(existing)} already extracted sessions (use --force to re-extract)")
+
+    if not sessions_to_process:
+        print("  No new sessions to extract.\n")
+        return
+
+    print(f"  Processing {len(sessions_to_process)} sessions...\n")
+
+    success = 0
+    failed = 0
+    for i, s in enumerate(sessions_to_process, 1):
+        session_id = s["session_id"]
+        print(f"  [{i}/{len(sessions_to_process)}] {s['project']}: {s['prompt'][:40]}...")
+
+        try:
+            extraction = asyncio.run(extract_from_session(session_id, s["project"]))
+            save_extraction(extraction)
+            print(f"    -> {len(extraction.episodic)}e {len(extraction.semantic)}s {len(extraction.procedural)}p {len(extraction.decisions)}d {len(extraction.gotchas)}g")
+            success += 1
+        except Exception as e:
+            print(f"    -> Error: {e}")
+            failed += 1
+
+    print(f"\n  Done: {success} extracted, {failed} failed\n")
+
+
+def cmd_consolidate(args):
+    """Consolidate extractions into project memory"""
+    from src.claude_sessions_explorer.memory import (
+        consolidate_project,
+        save_project_memory,
+        load_extractions,
+        get_all_projects,
+    )
+
+    project = args.project
+    use_llm = not args.simple
+
+    if not project:
+        # List available projects
+        projects = get_all_projects()
+        if not projects:
+            print("\n  No extractions found. Run 'extract-all' first.\n")
+            return
+        print("\n  Available projects with extractions:")
+        for p in projects:
+            extractions = load_extractions(p)
+            print(f"    - {p} ({len(extractions)} sessions)")
+        print("\n  Use: consolidate -p <project>\n")
+        return
+
+    print(f"\n  Consolidating project: {project}")
+    print(f"  Mode: {'LLM-assisted' if use_llm else 'simple aggregation'}")
+
+    try:
+        memory = asyncio.run(consolidate_project(project, use_llm=use_llm))
+        output_file = save_project_memory(memory)
+
+        print(f"\n  Consolidated from {memory.sessions_analyzed} sessions:")
+        print(f"    Episodic memories: {len(memory.episodic)}")
+        print(f"    Semantic memories: {len(memory.semantic)}")
+        print(f"    Procedural memories: {len(memory.procedural)}")
+        print(f"    Decisions: {len(memory.decisions)}")
+        print(f"    Gotchas: {len(memory.gotchas)}")
+        print(f"\n  Saved to: {output_file}\n")
+
+    except ValueError as e:
+        print(f"  Error: {e}\n")
+        sys.exit(1)
+    except Exception as e:
+        print(f"  Error during consolidation: {e}\n")
+        sys.exit(1)
+
+
+def cmd_generate(args):
+    """Generate CLAUDE.md and skills from project memory"""
+    from src.claude_sessions_explorer.memory import generate_all, load_project_memory
+
+    project = args.project
+    use_llm = not args.simple
+    skip_verify = args.no_verify if hasattr(args, 'no_verify') else False
+
+    if not project:
+        # List available projects
+        memory_dir = Path(".data/memory")
+        if not memory_dir.exists():
+            print("\n  No consolidated memories found. Run 'consolidate' first.\n")
+            return
+        projects = [d.name for d in memory_dir.iterdir() if d.is_dir()]
+        if not projects:
+            print("\n  No consolidated memories found. Run 'consolidate' first.\n")
+            return
+        print("\n  Available projects with consolidated memory:")
+        for p in projects:
+            memory = load_project_memory(p)
+            if memory:
+                print(f"    - {p} ({memory.sessions_analyzed} sessions)")
+        print("\n  Use: generate -p <project>\n")
+        return
+
+    print(f"\n  Generating for project: {project}")
+    print(f"  Mode: {'LLM-assisted' if use_llm else 'template-based'}")
+    if use_llm and not skip_verify:
+        print("  Verification: enabled")
+
+    try:
+        result = asyncio.run(generate_all(project, use_llm=use_llm, verify=not skip_verify))
+
+        print(f"\n  Generated:")
+        print(f"    CLAUDE.md: {result['claudemd']}")
+        print(f"    Skills: {len(result['skills'])} files")
+        for skill in result['skills']:
+            print(f"      - {skill}")
+        tasks = result.get('tasks', [])
+        print(f"    Tasks: {len(tasks) - 1 if tasks else 0} generated")  # -1 for tasks.json
+        for task in tasks[1:]:  # Skip tasks.json, show individual task files
+            print(f"      - {task}")
+        print(f"    Knowledge: {result['knowledge']}")
+
+        # Show verification results
+        if result.get('verification_result'):
+            verification = result['verification_result']
+            print(f"\n  Verification:")
+            print(f"    Valid: {verification.get('is_valid', 'unknown')}")
+            print(f"    Summary: {verification.get('summary', 'N/A')}")
+
+            issues = verification.get('issues', [])
+            if issues:
+                errors = [i for i in issues if i.get('severity') == 'error']
+                warnings = [i for i in issues if i.get('severity') == 'warning']
+                infos = [i for i in issues if i.get('severity') == 'info']
+
+                if errors:
+                    print(f"    Errors: {len(errors)}")
+                    for i in errors[:3]:
+                        print(f"      - {i.get('description', 'Unknown')}")
+                if warnings:
+                    print(f"    Warnings: {len(warnings)}")
+                    for i in warnings[:3]:
+                        print(f"      - {i.get('description', 'Unknown')}")
+                if infos:
+                    print(f"    Info: {len(infos)}")
+
+            if result.get('verification'):
+                print(f"    Report: {result['verification']}")
+        print()
+
+    except ValueError as e:
+        print(f"  Error: {e}\n")
+        sys.exit(1)
+    except Exception as e:
+        print(f"  Error during generation: {e}\n")
+        sys.exit(1)
+
+
+def cmd_learn(args):
+    """All-in-one: extract + consolidate + generate"""
+    from src.claude_sessions_explorer.memory import (
+        extract_from_session,
+        save_extraction,
+        consolidate_project,
+        save_project_memory,
+        generate_all,
+    )
+
+    project_filter = args.project.lower() if args.project else None
+    use_llm = not args.simple
+
+    if not project_filter:
+        print("\n  Usage: learn -p <project>\n")
+        return
+
+    # Find matching projects
+    projects = get_projects()
+    projects = [p for p in projects if project_filter in p["name"].lower() or project_filter in p["path"].lower()]
+
+    if not projects:
+        print(f"\n  No projects found matching '{args.project}'.\n")
+        return
+
+    project_name = projects[0]["name"]
+    print(f"\n  Learning from project: {project_name}")
+    print("  " + "=" * 40)
+
+    # Step 1: Extract
+    print("\n  Step 1: Extracting from sessions...")
+    all_sessions = []
+    for p in projects:
+        for s in p["sessions"]:
+            all_sessions.append({
+                "session_id": s.get("sessionId"),
+                "project": project_name,
+                "prompt": truncate(s.get("firstPrompt", ""), 50)
+            })
+
+    data_dir = Path(".data/extractions")
+    existing = set()
+    if data_dir.exists():
+        for project_dir in data_dir.iterdir():
+            if project_dir.is_dir():
+                for f in project_dir.glob("*.json"):
+                    existing.add(f.stem)
+
+    sessions_to_process = [s for s in all_sessions if s["session_id"] not in existing]
+
+    if sessions_to_process:
+        print(f"  Processing {len(sessions_to_process)} new sessions...")
+        for i, s in enumerate(sessions_to_process, 1):
+            try:
+                extraction = asyncio.run(extract_from_session(s["session_id"], project_name))
+                save_extraction(extraction)
+                print(f"    [{i}/{len(sessions_to_process)}] Extracted")
+            except Exception as e:
+                print(f"    [{i}/{len(sessions_to_process)}] Failed: {e}")
+    else:
+        print(f"  All {len(all_sessions)} sessions already extracted.")
+
+    # Step 2: Consolidate
+    print("\n  Step 2: Consolidating memories...")
+    try:
+        memory = asyncio.run(consolidate_project(project_name, use_llm=use_llm))
+        save_project_memory(memory)
+        print(f"  Consolidated {memory.sessions_analyzed} sessions")
+    except Exception as e:
+        print(f"  Consolidation failed: {e}")
+        sys.exit(1)
+
+    # Step 3: Generate
+    print("\n  Step 3: Generating outputs...")
+    try:
+        result = asyncio.run(generate_all(project_name, use_llm=use_llm))
+        print(f"  Generated CLAUDE.md and {len(result['skills'])} skills")
+    except Exception as e:
+        print(f"  Generation failed: {e}")
+        sys.exit(1)
+
+    print("\n  Done! Files saved to .data/generated/{}/".format(project_name))
+    print("  Use 'apply -p {}' to copy to your project.\n".format(project_name))
+
+
+def cmd_apply(args):
+    """Apply generated files to project directory"""
+    from src.claude_sessions_explorer.memory import apply_to_project
+
+    project = args.project
+    target = Path(args.target) if args.target else None
+
+    if not project:
+        print("\n  Usage: apply -p <project> [-t <target-path>]\n")
+        return
+
+    # Find project path if not specified
+    if not target:
+        projects = get_projects()
+        matching = [p for p in projects if project.lower() in p["name"].lower()]
+        if matching:
+            target = Path(matching[0]["path"])
+        else:
+            print(f"\n  Could not determine project path. Use -t <path>\n")
+            return
+
+    print(f"\n  Applying to: {target}")
+
+    try:
+        result = apply_to_project(project, target)
+
+        if result.get("backup"):
+            print(f"  Backed up existing CLAUDE.md to: {result['backup']}")
+
+        print(f"\n  Copied {len(result['copied'])} files:")
+        for f in result["copied"]:
+            print(f"    - {f}")
+        print()
+
+    except ValueError as e:
+        print(f"  Error: {e}\n")
+        sys.exit(1)
+    except Exception as e:
+        print(f"  Error during apply: {e}\n")
+        sys.exit(1)
+
+
+def cmd_query(args):
+    """Query project memory"""
+    from src.claude_sessions_explorer.memory import query_memory
+
+    project = args.project
+    question = args.question
+
+    if not project or not question:
+        print("\n  Usage: query -p <project> \"your question\"\n")
+        return
+
+    print(f"\n  Querying {project} memory...")
+    print()
+
+    try:
+        answer = asyncio.run(query_memory(project, question))
+        print(answer)
+        print()
+
+    except ValueError as e:
+        print(f"  Error: {e}\n")
+        sys.exit(1)
+    except Exception as e:
+        print(f"  Error during query: {e}\n")
+        sys.exit(1)
+
+
 # ============ Main ============
 
 def main():
@@ -476,6 +864,15 @@ Examples:
   %(prog)s commits              List tracked commits
   %(prog)s export data.json     Export all data
   %(prog)s open                 Open web UI
+
+Memory/Learning Commands:
+  %(prog)s extract <session-id> Extract learnings from a session
+  %(prog)s extract-all -p proj  Extract from all sessions for project
+  %(prog)s consolidate -p proj  Consolidate extractions into project memory
+  %(prog)s generate -p proj     Generate CLAUDE.md and skills
+  %(prog)s learn -p proj        All-in-one: extract + consolidate + generate
+  %(prog)s apply -p proj        Apply generated files to project
+  %(prog)s query -p proj "?"    Query project memory
 """
     )
 
@@ -518,6 +915,41 @@ Examples:
     p = subparsers.add_parser("open", help="Open web UI")
     p.add_argument("-p", "--port", type=int, default=3000, help="Port number")
 
+    # extract
+    p = subparsers.add_parser("extract", help="Extract learnings from a session")
+    p.add_argument("session_id", help="Session ID to extract from")
+
+    # extract-all
+    p = subparsers.add_parser("extract-all", help="Extract learnings from all sessions")
+    p.add_argument("-p", "--project", help="Filter by project name")
+    p.add_argument("-f", "--force", action="store_true", help="Re-extract existing sessions")
+
+    # consolidate
+    p = subparsers.add_parser("consolidate", help="Consolidate extractions into project memory")
+    p.add_argument("-p", "--project", help="Project name")
+    p.add_argument("-s", "--simple", action="store_true", help="Use simple aggregation (no LLM)")
+
+    # generate
+    p = subparsers.add_parser("generate", help="Generate CLAUDE.md and skills from memory")
+    p.add_argument("-p", "--project", help="Project name")
+    p.add_argument("-s", "--simple", action="store_true", help="Use template-based generation (no LLM)")
+    p.add_argument("--no-verify", action="store_true", help="Skip verification step")
+
+    # learn
+    p = subparsers.add_parser("learn", help="All-in-one: extract + consolidate + generate")
+    p.add_argument("-p", "--project", required=True, help="Project name")
+    p.add_argument("-s", "--simple", action="store_true", help="Use simple mode (no LLM)")
+
+    # apply
+    p = subparsers.add_parser("apply", help="Apply generated files to project")
+    p.add_argument("-p", "--project", help="Project name")
+    p.add_argument("-t", "--target", help="Target project path (auto-detected if not specified)")
+
+    # query
+    p = subparsers.add_parser("query", help="Query project memory")
+    p.add_argument("-p", "--project", required=True, help="Project name")
+    p.add_argument("question", help="Question to ask")
+
     args = parser.parse_args()
 
     commands = {
@@ -530,6 +962,13 @@ Examples:
         "commits": cmd_commits,
         "export": cmd_export,
         "open": cmd_open,
+        "extract": cmd_extract,
+        "extract-all": cmd_extract_all,
+        "consolidate": cmd_consolidate,
+        "generate": cmd_generate,
+        "learn": cmd_learn,
+        "apply": cmd_apply,
+        "query": cmd_query,
     }
 
     if args.command:
