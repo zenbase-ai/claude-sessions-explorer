@@ -1,0 +1,23 @@
+# Claude Code local files
+.claude/
+
+# Dependencies
+node_modules/
+
+# Build outputs
+.next/
+out/
+dist/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
